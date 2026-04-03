@@ -87,6 +87,10 @@ func checkPostgres(target string, wg *sync.WaitGroup, sem chan struct{}, flags m
 		utils.Colorize(utils.ColorRed, err.Error())
 		return
 	}
+	IsIPv6 := utils.IsIPv6(target)
+	if IsIPv6 {
+		target = fmt.Sprintf("[%s]", target)
+	}
 
 	dbURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", flags["user"], flags["password"], target, port, flags["database"])
 	// fmt.Println(dbURL)

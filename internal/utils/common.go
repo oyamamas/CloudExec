@@ -99,3 +99,10 @@ func RandStringRunes(n int) string {
 	}
 	return string(b)
 }
+
+func IsIPv6(ipAddress string) bool {
+	ipAddress = strings.TrimSpace(ipAddress)
+
+	ip := net.ParseIP(ipAddress)
+	return ip != nil && ip.To4() == nil
+}
