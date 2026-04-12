@@ -21,6 +21,10 @@ import (
 )
 
 var (
+	ExporterPorts = []int{9090, 9091, 9093,
+		9100, 9104, 9114, 9115, 9121, 9125, 9138, 9150,
+		9162, 9168, 9178, 9180, 9182, 9187, 9188,
+		9200, 9256, 9283, 9445, 9630}
 	DebugEndpoints = []string{"/debug/vars", "/debug/pprof/cmdline"}
 	RelayEndpoints = []string{"/probe?target=", "/scrape?target="}
 )
@@ -84,36 +88,36 @@ func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags 
 	client := http.Client{
 		Timeout: 1 * time.Second,
 	}
-
-	for _, endpoint := range DebugEndpoints {
-		url := fmt.Sprintf("http://%s%s", target, endpoint)
-		response, err := utils.HttpRequest(url, http.MethodGet, []byte(""), client)
-		if err != nil {
-			continue
-		}
-
-		defer response.Body.Close()
-
-		if response.StatusCode != http.StatusOK {
-			utils.Colorize(utils.ColorYellow, fmt.Sprintf("[-] %s - endpoint %s not accesible", target, endpoint))
-		}
-
-		respBody, err := io.ReadAll(response.Body)
-
-		if strings.Contains(string(respBody), "cmdline") {
-			var data map[string]interface{}
-			if err := json.Unmarshal(respBody, &data); err != nil {
+	for _, port := range ExporterPorts {
+		for _, endpoint := range DebugEndpoints {
+			url := fmt.Sprintf("http://%s%s:%s", target, endpoint, strconv.Itoa(port))
+			response, err := utils.HttpRequest(url, http.MethodGet, []byte(""), client)
+			if err != nil {
 				continue
 			}
 
-			if cmdline, ok := data["cmdline"]; ok && cmdline != nil {
-				cmdlineData := fmt.Sprintf("%v", cmdline)
-				utils.Colorize(utils.ColorGreen, fmt.Sprintf("[+] %s - cmdline found\n %s \n", target, cmdlineData))
-			}
-		} else {
-			utils.Colorize(utils.ColorRed, fmt.Sprintf("[-] %s - cmdline not found", endpoint))
-		}
+			defer response.Body.Close()
 
+			if response.StatusCode != http.StatusOK {
+				utils.Colorize(utils.ColorYellow, fmt.Sprintf("[-] %s - endpoint %s not accesible", target, endpoint))
+			}
+
+			respBody, err := io.ReadAll(response.Body)
+
+			if strings.Contains(string(respBody), "cmdline") {
+				var data map[string]interface{}
+				if err := json.Unmarshal(respBody, &data); err != nil {
+					continue
+				}
+
+				if cmdline, ok := data["cmdline"]; ok && cmdline != nil {
+					cmdlineData := fmt.Sprintf("%v", cmdline)
+					utils.Colorize(utils.ColorGreen, fmt.Sprintf("[+] %s - cmdline found\n %s \n", target, cmdlineData))
+				}
+			} else {
+				utils.Colorize(utils.ColorRed, fmt.Sprintf("[-] %s - cmdline not found", endpoint))
+			}
+		}
 	}
 
 }
