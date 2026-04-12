@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/cotsom/CloudExec/internal/utils"
+	"github.com/oyamamas/CloudExec/internal/utils"
 )
 
 type Clone struct{}

@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	utils "github.com/cotsom/CloudExec/internal/utils"
+	utils "github.com/oyamamas/CloudExec/internal/utils"
 	clientv2 "go.etcd.io/etcd/client/v2"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cotsom/CloudExec/internal/utils"
+	"github.com/oyamamas/CloudExec/internal/utils"
 )
 
 type Ssrf struct {
