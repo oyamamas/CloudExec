@@ -5,7 +5,7 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -111,7 +111,7 @@ func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags 
 
 			defer response.Body.Close()
 
-			respBody, err := ioutil.ReadAll(response.Body)
+			respBody, err := io.ReadAll(response.Body)
 			if err != nil {
 				fmt.Printf("client: could not read response body: %s\n", err)
 			}
@@ -131,17 +131,20 @@ func detectExportersPort(target string) []int {
 	ports := []int{}
 
 	client := http.Client{
-		Timeout: 1 * time.Second,
+		Timeout: 500 * time.Millisecond,
 	}
 
 	//Check Ports
 	for port := ExportersPortBegin; port <= ExportersPortEnd; port++ {
 		url := fmt.Sprintf("http://%s:%s", target, strconv.Itoa(port))
-		response, err := utils.HttpRequest(url, http.MethodGet, []byte(""), client)
+		response, err := utils.HttpRequest(url, http.MethodHead, []byte(""), client)
+
 		if err != nil {
 			// fmt.Println(err)
 			continue
 		}
+
+		defer response.Body.Close()
 
 		if response.StatusCode == 200 {
 			exporterType, err := utils.ParseExportersType(response.Body)
@@ -156,7 +159,7 @@ func detectExportersPort(target string) []int {
 			continue
 		}
 
-		defer response.Body.Close()
 	}
+
 	return ports
 }
