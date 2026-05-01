@@ -95,7 +95,6 @@ func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags 
 	}()
 
 	ports := detectExportersPort(target)
-	fmt.Println(ports)
 	client := http.Client{
 		Timeout: 1 * time.Second,
 	}
@@ -116,12 +115,27 @@ func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags 
 				fmt.Printf("client: could not read response body: %s\n", err)
 			}
 
-			if strings.Contains(string(respBody), "cmdline") {
-				utils.Colorize(utils.ColorBlue, fmt.Sprintf("[*] %s:%s:%s - found", target, port, endpoint))
+			if endpoint == "/debug/vars" {
+				if strings.Contains(string(respBody), "cmdline") || len(string(respBody)) > 0 {
+					utils.Colorize(utils.ColorBlue, fmt.Sprintf("[*] %s:%d%s - found (debug/vars)", target, strconv.Itoa(port), endpoint))
+					m, err := utils.UnmarshallJsonString(string(respBody))
+					if err != nil {
+						continue
+					}
+					if cmdline, ok := utils.ExportersExtractCmdline(m); ok {
+						utils.Colorize(utils.ColorGreen, fmt.Sprintf("[*] %s:%d%s - cmdline: %s", target, port, endpoint, cmdline))
+						break // if /debug/vars available, break, that should be enough
+					}
+					continue
+				}
+
+				if strings.Contains(string(respBody), "cmdline") {
+					utils.Colorize(utils.ColorBlue, fmt.Sprintf("[*] %s:%s:%s - found", target, port, endpoint))
+				}
 			}
 		}
-	}
 
+	}
 }
 
 func checkExportersRelay(target string, wg *sync.WaitGroup, sem chan struct{}, flags map[string]string) {
@@ -129,37 +143,46 @@ func checkExportersRelay(target string, wg *sync.WaitGroup, sem chan struct{}, f
 
 func detectExportersPort(target string) []int {
 	ports := []int{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var sem = make(chan struct{}, 100)
 
 	client := http.Client{
 		Timeout: 500 * time.Millisecond,
 	}
 
-	//Check Ports
 	for port := ExportersPortBegin; port <= ExportersPortEnd; port++ {
-		url := fmt.Sprintf("http://%s:%s", target, strconv.Itoa(port))
-		response, err := utils.HttpRequest(url, http.MethodHead, []byte(""), client)
+		wg.Add(1)
+		sem <- struct{}{}
 
-		if err != nil {
-			// fmt.Println(err)
-			continue
-		}
+		go func(p int) {
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
 
-		defer response.Body.Close()
-
-		if response.StatusCode == 200 {
-			exporterType, err := utils.ParseExportersType(response.Body)
+			url := fmt.Sprintf("http://%s:%d", target, p)
+			response, err := utils.HttpRequest(url, http.MethodHead, []byte(""), client)
 			if err != nil {
-				continue
+				return
 			}
-			utils.Colorize(utils.ColorBlue, fmt.Sprintf("[*] %s - detected %s on %s port", target, exporterType,
-				strconv.Itoa(port)))
-			ports = append(ports, port)
+			defer response.Body.Close()
 
-		} else {
-			continue
-		}
+			if response.StatusCode == 200 {
+				exporterType, err := utils.ParseExportersType(response.Body)
+				if err != nil {
+					return
+				}
 
+				utils.Colorize(utils.ColorBlue, fmt.Sprintf("[*] %s - detected %s on %d port", target, exporterType, p))
+
+				mu.Lock()
+				ports = append(ports, p)
+				mu.Unlock()
+			}
+		}(port)
 	}
 
+	wg.Wait() // ждём завершения всех проверок
 	return ports
 }
