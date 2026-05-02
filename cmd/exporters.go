@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cotsom/CloudExec/internal/secretsengine"
 	"github.com/cotsom/CloudExec/internal/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -42,6 +43,7 @@ var exportersCmd = &cobra.Command{
 			- /debug/vars
 			- relay attacks`,
 	Run: func(cmd *cobra.Command, args []string) {
+		secretsengine.LoadRules()
 		fmt.Println("exporters called")
 		flags := make(map[string]string)
 		cmd.Flags().VisitAll(func(f *pflag.Flag) {
@@ -66,12 +68,14 @@ var exportersCmd = &cobra.Command{
 		}
 		sem = make(chan struct{}, threads)
 
-		progress := 0
-		for i, target := range targets {
+		//progress := 0
+		// temp disable this progress bar
+		// i do only regress
+		for _, target := range targets {
 			wg.Add(1)
 			sem <- struct{}{}
 			go checkExporters(target, &wg, sem, flags)
-			utils.ProgressBar(len(targets), i+1, &progress)
+			//utils.ProgressBar(len(targets), i+1, &progress)
 		}
 		fmt.Println("")
 		wg.Wait()
@@ -104,7 +108,7 @@ func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags 
 			response, err := utils.HttpRequest(url, http.MethodGet, []byte(""), client)
 
 			if err != nil {
-				// fmt.Println(err)
+				fmt.Println(err)
 				continue
 			}
 
@@ -124,7 +128,14 @@ func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags 
 					}
 					if cmdline, ok := utils.ExportersExtractCmdline(m); ok {
 						utils.Colorize(utils.ColorGreen, fmt.Sprintf("[*] %s:%d%s - cmdline: %s", target, port, endpoint, cmdline))
-						break // if /debug/vars available, break, that should be enough
+						regulated := secretsengine.FindSecrets(cmdline)
+						if len(regulated) > 0 {
+							utils.Colorize(utils.ColorRed, fmt.Sprintf("[*] %s:%d%s - cmdline secret: %s", target, port, endpoint, regulated))
+						} else {
+							utils.Colorize(utils.ColorGreen, fmt.Sprintf("[*] %s:%d%s - no secret", target, port, endpoint))
+						}
+						utils.Colorize(utils.ColorBlue, "breaking")
+						break
 					}
 					continue
 				}
@@ -183,6 +194,6 @@ func detectExportersPort(target string) []int {
 		}(port)
 	}
 
-	wg.Wait() // ждём завершения всех проверок
+	wg.Wait()
 	return ports
 }
