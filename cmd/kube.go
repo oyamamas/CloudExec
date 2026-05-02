@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	utils "github.com/cotsom/CloudExec/internal/utils"
+	utils "github.com/oyamamas/CloudExec/internal/utils"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

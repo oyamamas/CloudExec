@@ -1,4 +1,4 @@
-module github.com/cotsom/CloudExec
+module github.com/oyamamas/CloudExec
 
 go 1.25.0
 
