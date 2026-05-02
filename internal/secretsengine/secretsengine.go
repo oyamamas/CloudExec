@@ -12,6 +12,7 @@ import (
 
 //go:embed rules/*.yml
 var rulesYAML []byte
+
 var compiledRules []Rule
 
 type Rule struct {
@@ -32,12 +33,11 @@ func LoadRules() {
 	}
 
 	if err := yaml.Unmarshal(rulesYAML, &root); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to parse rules YAML: %v", err)
 	}
 
 	raw := root.Patterns
-
-	compiledRules := make([]Rule, 0, len(raw))
+	compiledRules = make([]Rule, 0, len(raw)) // ← исправлено (было :=)
 
 	for _, r := range raw {
 		re := regexp.MustCompile(r.Pattern.Regex)
@@ -51,19 +51,15 @@ func LoadRules() {
 	utils.Colorize(utils.ColorBlue, fmt.Sprintf("Loaded %d rules\n", len(compiledRules)))
 }
 
-func FindSecrets(text string) (out string) {
-	out = ""
-	fmt.Printf("Chechekign %s\n", text)
+func FindSecrets(text string) string {
 	for _, rule := range compiledRules {
 		matches := rule.Re.FindAllStringSubmatch(text, -1)
-		for _, m := range matches {
-			secret := m[0]
-			if len(m) > 1 {
-				secret = m[1]
+		if len(matches) > 0 {
+			if len(matches[0]) > 1 {
+				return matches[0][1]
 			}
-			out = secret
+			return matches[0][0]
 		}
 	}
-
-	return out
+	return ""
 }

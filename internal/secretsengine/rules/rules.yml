@@ -1,8 +1,77 @@
 patterns:
   - pattern:
-      name: ElasticSearch Connection String
-      regex: '--es\.uri[=\s]+https?://[^@\s]+:[^@\s]+@[^\s"''"]+'
+      name: Elasticsearch Connection String
+      regex: --es\.uri[=\s]+https?://[^@\s]+:[^@\s]+@[^\s"''"]+
       confidence: high
+  - pattern:
+      name: MongoDB Connection String
+      regex: "mongodb(\\+srv)?://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: PostgreSQL Connection String
+      regex: "postgres(ql)?://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: MySQL Connection String
+      regex: "mysql://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: Redis Connection String
+      regex: "rediss?://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: Kafka Connection String
+      regex: "(kafka|PLAINTEXT|SSL)://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: RabbitMQ Connection String
+      regex: "amqps?://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: ClickHouse Connection String
+      regex: "clickhouse://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: InfluxDB Connection String
+      regex: "influxdb://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: Neo4j Connection String
+      regex: "(neo4j|bolt)://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: Cassandra Connection String
+      regex: "cassandra://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: SQL Server Connection String
+      regex: "sqlserver://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: Oracle Connection String
+      regex: "oracle://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: JDBC Connection String
+      regex: "jdbc:[^@\\s:]+://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: high
+
+  - pattern:
+      name: Generic Connection String with Password
+      regex: "[a-zA-Z0-9_-]+://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
+      confidence: medium
   - pattern:
       name: AWS API Gateway
       regex: "[0-9a-z]+.execute-api.[0-9a-z._-]+.amazonaws.com"
