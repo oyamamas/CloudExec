@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -98,7 +97,7 @@ func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags 
 		wg.Done()
 	}()
 
-	ports := detectExportersPort(target)
+	ports := detectExportersPort(target, wg, sem)
 	client := http.Client{
 		Timeout: 1 * time.Second,
 	}
@@ -151,12 +150,10 @@ func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags 
 func checkExportersRelay(target string, wg *sync.WaitGroup, sem chan struct{}, flags map[string]string) {
 }
 
-func detectExportersPort(target string) []int {
+func detectExportersPort(target string, wg *sync.WaitGroup, sem chan struct{}) []int {
 	ports := []int{}
 	var mu sync.Mutex
-	var wg sync.WaitGroup
-	//var sem = make(chan struct{})
-	var sem = make(chan struct{}, runtime.GOMAXPROCS(0))
+
 	client := http.Client{
 		Timeout: 500 * time.Millisecond,
 	}
