@@ -25,14 +25,19 @@ var (
 	ExportersPortBegin = 9100
 	ExportersPortEnd   = 9999
 )
+
+var RelayEndpoints = map[string]string{
+	"postgres":      "/probe?target=",
+	"pgbouncer":     "/probe?target=",
+	"proxmox":       "/pve?target=",
+	"redis":         "/scrape?target=",
+	"elasticsearch": "/probe?target=",
+}
+
 var DebugEndpoints = []string{"/debug/vars",
 	"/debug/pprof/cmdline",
 	"/debug/pprof",
 }
-
-var RelayEndpoints = []string{
-	"/probe?target=",
-	"/scrape?target="}
 
 var exportersCmd = &cobra.Command{
 	Use:   "exporters",
@@ -88,7 +93,6 @@ func init() {
 	exportersCmd.Flags().StringP("module", "M", "", "Choose module")
 	exportersCmd.Flags().StringP("timeout", "", "", "Count of seconds for waiting http response")
 	exportersCmd.Flags().BoolVarP(&RelayFlag, "relay", "r", false, "Enable relay attack")
-	exportersCmd.Flags().StringVarP(&RelayIP, "relay-ip", "R", "", "Relay IP")
 }
 
 func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags map[string]string) {
@@ -144,10 +148,44 @@ func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags 
 			}
 		}
 
+		if RelayFlag {
+			exporterType := utils.GetExporterType(target, port, wg, sem)
+			checkExportersRelay(target, strconv.Itoa(port), exporterType, wg, sem, flags)
+		}
 	}
 }
 
-func checkExportersRelay(target string, wg *sync.WaitGroup, sem chan struct{}, flags map[string]string) {
+func checkExportersRelay(target string, port string, exporterType string,
+	wg *sync.WaitGroup, sem chan struct{}, flags map[string]string) {
+
+	client := http.Client{
+		Timeout: 1 * time.Second,
+	}
+
+	relayEndpoint, ok := RelayEndpoints[strings.ToLower(exporterType)]
+	if !ok {
+		return
+	}
+	url := fmt.Sprintf("http://%s:%s/%s", target, port, relayEndpoint)
+
+	response, err := utils.HttpRequest(url, http.MethodGet, []byte(""), client)
+	if err != nil {
+		return
+	}
+
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return
+	}
+
+	if strings.Contains(string(respBody), "target") || len(string(respBody)) > 0 {
+		utils.Colorize(utils.ColorYellow, fmt.Sprintf("[*] %s:%s%s - potential relay", target, port, relayEndpoint))
+	}
+
+	return
+
 }
 
 func detectExportersPort(target string, wg *sync.WaitGroup, sem chan struct{}) []int {
@@ -155,7 +193,7 @@ func detectExportersPort(target string, wg *sync.WaitGroup, sem chan struct{}) [
 	var mu sync.Mutex
 
 	client := http.Client{
-		Timeout: 500 * time.Millisecond,
+		Timeout: 250 * time.Millisecond,
 	}
 
 	for port := ExportersPortBegin; port <= ExportersPortEnd; port++ {
@@ -169,7 +207,7 @@ func detectExportersPort(target string, wg *sync.WaitGroup, sem chan struct{}) [
 			}()
 
 			url := fmt.Sprintf("http://%s:%d", target, p)
-			response, err := utils.HttpRequest(url, http.MethodHead, []byte(""), client)
+			response, err := utils.HttpRequest(url, http.MethodGet, []byte(""), client)
 			if err != nil {
 				return
 			}
