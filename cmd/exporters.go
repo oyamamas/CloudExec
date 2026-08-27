@@ -22,8 +22,8 @@ import (
 var (
 	RelayFlag          = false
 	RelayIP            = ""
-	ExportersPortBegin = 9100
-	ExportersPortEnd   = 9999
+	ExportersPortBegin = 9180
+	ExportersPortEnd   = 9188
 )
 
 var RelayEndpoints = map[string]string{
@@ -78,7 +78,7 @@ var exportersCmd = &cobra.Command{
 		for _, target := range targets {
 			wg.Add(1)
 			sem <- struct{}{}
-			go checkExporters(target, &wg, sem, flags)
+			go checkExporters(target, &wg, sem, threads, flags)
 			//utils.ProgressBar(len(targets), i+1, &progress)
 		}
 		fmt.Println("")
@@ -95,17 +95,17 @@ func init() {
 	exportersCmd.Flags().BoolVarP(&RelayFlag, "relay", "r", false, "Enable relay attack")
 }
 
-func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags map[string]string) {
+func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, threads int, flags map[string]string) {
 	defer func() {
 		<-sem
 		wg.Done()
 	}()
 
-	ports := detectExportersPort(target, wg, sem)
+	ports := detectExportersPort(target, threads)
 	client := http.Client{
 		Timeout: 1 * time.Second,
 	}
-	for _, port := range ports {
+	for port, exporterType := range ports {
 		for _, endpoint := range DebugEndpoints {
 			url := fmt.Sprintf("http://%s:%d%s", target, port, endpoint)
 			response, err := utils.HttpRequest(url, http.MethodGet, []byte(""), client)
@@ -149,14 +149,13 @@ func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags 
 		}
 
 		if RelayFlag {
-			exporterType := utils.GetExporterType(target, port, wg, sem)
-			checkExportersRelay(target, strconv.Itoa(port), exporterType, wg, sem, flags)
+			checkExportersRelay(target, strconv.Itoa(port), exporterType, flags)
 		}
 	}
 }
 
 func checkExportersRelay(target string, port string, exporterType string,
-	wg *sync.WaitGroup, sem chan struct{}, flags map[string]string) {
+	flags map[string]string) {
 
 	client := http.Client{
 		Timeout: 1 * time.Second,
@@ -166,7 +165,7 @@ func checkExportersRelay(target string, port string, exporterType string,
 	if !ok {
 		return
 	}
-	url := fmt.Sprintf("http://%s:%s/%s", target, port, relayEndpoint)
+	url := fmt.Sprintf("http://%s:%s%s", target, port, relayEndpoint)
 
 	response, err := utils.HttpRequest(url, http.MethodGet, []byte(""), client)
 	if err != nil {
@@ -188,12 +187,14 @@ func checkExportersRelay(target string, port string, exporterType string,
 
 }
 
-func detectExportersPort(target string, wg *sync.WaitGroup, sem chan struct{}) []int {
-	ports := []int{}
+func detectExportersPort(target string, threads int) map[int]string {
+	ports := make(map[int]string)
 	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, threads)
 
 	client := http.Client{
-		Timeout: 250 * time.Millisecond,
+		Timeout: 2000 * time.Millisecond,
 	}
 
 	for port := ExportersPortBegin; port <= ExportersPortEnd; port++ {
@@ -222,7 +223,7 @@ func detectExportersPort(target string, wg *sync.WaitGroup, sem chan struct{}) [
 				utils.Colorize(utils.ColorBlue, fmt.Sprintf("[*] %s - detected %s on %d port", target, exporterType, p))
 
 				mu.Lock()
-				ports = append(ports, p)
+				ports[p] = exporterType
 				mu.Unlock()
 			}
 		}(port)

@@ -4,10 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -85,7 +82,6 @@ func ExportersExtractCmdline(data map[string]interface{}) (string, bool) {
 			return result, true
 		}
 	default:
-		// fallback для чисел, bool и прочего
 		s := fmt.Sprintf("%v", v)
 		if strings.TrimSpace(s) != "" {
 			return s, true
@@ -93,35 +89,4 @@ func ExportersExtractCmdline(data map[string]interface{}) (string, bool) {
 	}
 
 	return "", false
-}
-
-func GetExporterType(target string, port int, wg *sync.WaitGroup, sem chan struct{}) string {
-	client := http.Client{
-		Timeout: 500 * time.Millisecond,
-	}
-
-	var exporterType string = ""
-
-	go func(p int) {
-		defer func() {
-			<-sem
-			wg.Done()
-		}()
-
-		url := fmt.Sprintf("http://%s:%d", target, p)
-		response, err := HttpRequest(url, http.MethodGet, []byte(""), client)
-		if err != nil {
-			return
-		}
-		defer response.Body.Close()
-
-		if response.StatusCode == 200 {
-			exporterType, err = ParseExportersType(response.Body)
-			if err != nil {
-				return
-			}
-		}
-	}(port)
-
-	return exporterType
 }
