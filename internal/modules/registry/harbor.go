@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/cotsom/CloudExec/internal/utils"
+	utils "github.com/oyamamas/CloudExec/internal/utils"
 )
 
 type Harbor struct {

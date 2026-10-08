@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	modules "github.com/cotsom/CloudExec/internal/modules/clickhouse"
-	"github.com/cotsom/CloudExec/internal/resource"
-	clickResources "github.com/cotsom/CloudExec/internal/resource/clickhouse"
-	"github.com/cotsom/CloudExec/internal/utils/sqlquery"
+	modules "github.com/oyamamas/CloudExec/internal/modules/clickhouse"
+	"github.com/oyamamas/CloudExec/internal/resource"
+	clickResources "github.com/oyamamas/CloudExec/internal/resource/clickhouse"
+	"github.com/oyamamas/CloudExec/internal/utils/sqlquery"
 
 	"github.com/spf13/cobra"
 

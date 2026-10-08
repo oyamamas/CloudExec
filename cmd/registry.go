@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	modules "github.com/cotsom/CloudExec/internal/modules/registry"
-	utils "github.com/cotsom/CloudExec/internal/utils"
+	modules "github.com/oyamamas/CloudExec/internal/modules/registry"
+	utils "github.com/oyamamas/CloudExec/internal/utils"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

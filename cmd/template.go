@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/cotsom/CloudExec/internal/resource"
-	clickResources "github.com/cotsom/CloudExec/internal/resource/clickhouse"
+	"github.com/oyamamas/CloudExec/internal/resource"
+	clickResources "github.com/oyamamas/CloudExec/internal/resource/clickhouse"
 
 	"github.com/spf13/cobra"
 

@@ -1,6 +1,6 @@
 package click_resources
 
-import "github.com/cotsom/CloudExec/internal/resource"
+import "github.com/oyamamas/CloudExec/internal/resource"
 
 type ClickhouseOptions struct {
 	resource.Options

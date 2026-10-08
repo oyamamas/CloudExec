@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	modules "github.com/cotsom/CloudExec/internal/modules/kafka"
-	utils "github.com/cotsom/CloudExec/internal/utils"
+	modules "github.com/oyamamas/CloudExec/internal/modules/kafka"
+	utils "github.com/oyamamas/CloudExec/internal/utils"
 
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl/plain"

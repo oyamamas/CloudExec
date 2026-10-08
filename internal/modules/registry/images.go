@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/cotsom/CloudExec/internal/utils"
+	"github.com/oyamamas/CloudExec/internal/utils"
 )
 
 type Images struct {

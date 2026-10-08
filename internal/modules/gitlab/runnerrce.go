@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/cotsom/CloudExec/internal/utils"
+	utils "github.com/oyamamas/CloudExec/internal/utils"
 	"github.com/go-git/go-billy/v6"
 	"github.com/go-git/go-billy/v6/memfs"
 	"github.com/go-git/go-git/v6"
