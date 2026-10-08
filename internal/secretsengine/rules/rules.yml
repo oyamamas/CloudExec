@@ -7,7 +7,25 @@ patterns:
       name: MongoDB Connection String
       regex: "mongodb(\\+srv)?://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"
       confidence: high
+  - pattern:
+      name: Proxmox VE API Token (PVEAPIToken)
+      regex: "PVEAPIToken=[^=]+![^=]+=[^ \\t\\r\\n'\"]+"
+      confidence: high
 
+  - pattern:
+      name: Proxmox Cloud-Init Password (--cipassword)
+      regex: "--cipassword[=: ]+['\"]?[^'\"\\s&|;]+['\"]?"
+      confidence: high
+
+  - pattern:
+      name: Proxmox User Password (pveum --password)
+      regex: "--password[=: ]+['\"]?[^'\"\\s&|;]+['\"]?"
+      confidence: medium
+
+  - pattern:
+      name: Proxmox Storage / PBS Password (pvesm --password)
+      regex: "--password[=: ]+['\"]?[^'\"\\s&|;]+['\"]?"
+      confidence: high
   - pattern:
       name: PostgreSQL Connection String
       regex: "postgres(ql)?://[^@\\s:]+:[^@\\s]+@[^ \\t\\r\\n]+"

@@ -1,123 +1,244 @@
 /*
-forked cotsom/CloudExec
-Copyright 2026 oyama
+Copyright © 2026 oyama forked cotsom
 */
 package cmd
 
 import (
-	"encoding/json"
+	"bytes"
+	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/oyamamas/CloudExec/internal/secretsengine"
 	"github.com/oyamamas/CloudExec/internal/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
 var (
-	ExporterPorts = []int{9090, 9091, 9093,
-		9100, 9104, 9114, 9115, 9121, 9125, 9138, 9150,
-		9162, 9168, 9178, 9180, 9182, 9187, 9188,
-		9200, 9256, 9283, 9445, 9630}
-	DebugEndpoints = []string{"/debug/vars", "/debug/pprof/cmdline"}
-	RelayEndpoints = []string{"/probe?target=", "/scrape?target="}
+	RelayFlag          = false
+	RelayIP            = ""
+	ExportersPortBegin = 9100
+	ExportersPortEnd   = 9999
 )
 
-func init() {
-	exportersCmd.Flags().IntP("threads", "t", 100, "threads")
-	exportersCmd.Flags().StringP("inputlist", "i", "", "Input from list of hosts")
-	exportersCmd.Flags().StringP("relay", "r", "", "IP to relay to")
-	rootCmd.AddCommand(exportersCmd)
-
+var RelayEndpoints = map[string]string{
+	"postgres":      "/probe?target=",
+	"pgbouncer":     "/probe?target=",
+	"proxmox":       "/pve?target=",
+	"redis":         "/scrape?target=",
+	"elasticsearch": "/probe?target=",
 }
 
-// exportersCmd represents the exporters command
+var DebugEndpoints = []string{
+	"/debug/vars",
+	"/debug/pprof/cmdline",
+	"/debug/pprof/",
+}
+
+const maxExporterBodySize = 4 << 20
+
 var exportersCmd = &cobra.Command{
 	Use:   "exporters",
-	Short: "Check Exporters for common misconfigs",
-	Long: `Check Exporters for common misconfigs:
+	Short: "Prometheus exporters Weaknesses",
+	Long: `General Exporters Weaknesses:
+			- /debug/pprof/
 			- /debug/pprof/cmdline
 			- /debug/vars
-			- relay ability`,
-	Run: func(cmd *cobra.Command, args []string) {
-
-		flags := make(map[string]string)
-		cmd.Flags().VisitAll(func(f *pflag.Flag) {
-			flags[f.Name] = f.Value.String()
-		})
-
-		targets, err := utils.GetTargets(flags, args)
-		if err != nil {
-			utils.Colorize(utils.ColorRed, err.Error())
-			return
-		}
-
-		// main logic goes here
-		var wg sync.WaitGroup
-		var sem chan struct{}
-
-		//set threads
-		threads, err := strconv.Atoi(flags["threads"])
-		if err != nil {
-			fmt.Println("You have to set correct number of threads")
-			os.Exit(0)
-		}
-		sem = make(chan struct{}, threads)
-
-		progress := 0
-		for i, target := range targets {
-			wg.Add(1)
-			sem <- struct{}{}
-			go checkExporters(target, &wg, sem, flags)
-			utils.ProgressBar(len(targets), i+1, &progress)
-		}
-		fmt.Println("")
-		wg.Wait()
-
-	},
+			- relay attacks`,
+	RunE: runExporters,
 }
 
-func checkExporters(target string, wg *sync.WaitGroup, sem chan struct{}, flags map[string]string) {
-
-	client := http.Client{
-		Timeout: 1 * time.Second,
+func runExporters(cmd *cobra.Command, args []string) error {
+	flags := make(map[string]string)
+	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+		flags[f.Name] = f.Value.String()
+	})
+	threads, timeout, err := exportersOptions(flags)
+	if err != nil {
+		return err
 	}
-	for _, port := range ExporterPorts {
-		for _, endpoint := range DebugEndpoints {
-			url := fmt.Sprintf("http://%s%s:%s", target, endpoint, strconv.Itoa(port))
-			response, err := utils.HttpRequest(url, http.MethodGet, []byte(""), client)
+	targets, err := utils.GetTargets(flags, args)
+	if err != nil {
+		return err
+	}
+	if err := secretsengine.LoadRules(); err != nil {
+		return err
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Preserve the existing support for exporters redirecting to self-signed HTTPS.
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	// The scan touches many different hosts and ports. Bound the idle pool too.
+	transport.MaxIdleConns = threads
+	defer transport.CloseIdleConnections()
+	scanner := exporterScanner{
+		client: &http.Client{Timeout: timeout, Transport: transport},
+		relay:  RelayFlag,
+		report: utils.Colorize,
+	}
+	return scanner.scan(cmd.Context(), targets, threads, ExportersPortBegin, ExportersPortEnd)
+}
+
+func exportersOptions(flags map[string]string) (int, time.Duration, error) {
+	threads, err := strconv.Atoi(flags["threads"])
+	if err != nil || threads <= 0 {
+		return 0, 0, fmt.Errorf("threads must be a positive integer")
+	}
+	timeoutValue := flags["timeout"]
+	if timeoutValue == "" {
+		timeoutValue = "2"
+	}
+	timeout, err := time.ParseDuration(timeoutValue + "s")
+	if err != nil || timeout <= 0 {
+		return 0, 0, fmt.Errorf("timeout must be a positive number of seconds")
+	}
+	return threads, timeout, nil
+}
+
+func init() {
+	rootCmd.AddCommand(exportersCmd)
+	exportersCmd.Flags().IntP("threads", "t", 100, "Maximum concurrent exporter checks across all hosts and ports")
+	exportersCmd.Flags().StringP("inputlist", "i", "", "Input from list of hosts")
+	exportersCmd.Flags().StringP("module", "M", "", "Choose module")
+	exportersCmd.Flags().StringP("timeout", "", "2", "Seconds to wait for each HTTP response")
+	exportersCmd.Flags().BoolVarP(&RelayFlag, "relay", "r", false, "Enable relay attack")
+}
+
+type exporterScanner struct {
+	client *http.Client
+	relay  bool
+	report func(utils.Color, string)
+}
+
+func (s *exporterScanner) scan(ctx context.Context, targets []string, threads, firstPort, lastPort int) error {
+	if threads <= 0 {
+		return fmt.Errorf("threads must be a positive integer")
+	}
+	if firstPort < 1 || lastPort > 65535 || firstPort > lastPort {
+		return fmt.Errorf("invalid exporter port range")
+	}
+	// A single pool bounds both detection and debug requests. Nested per-host
+	// pools previously multiplied the requested concurrency by itself.
+	jobs := make(chan string)
+	var wg sync.WaitGroup
+	for range threads {
+		wg.Go(func() {
+			for baseURL := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				s.checkPort(ctx, baseURL)
+			}
+		})
+	}
+produce:
+	for _, target := range targets {
+		target = strings.TrimSpace(target)
+		if target == "" {
+			continue
+		}
+		for port := firstPort; port <= lastPort; port++ {
+			baseURL := "http://" + net.JoinHostPort(target, strconv.Itoa(port))
+			select {
+			case jobs <- baseURL:
+			case <-ctx.Done():
+				break produce
+			}
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	return ctx.Err()
+}
+
+// Read and close each response before starting another request, including on
+// status/read errors. The size limit prevents a single page exhausting memory.
+func (s *exporterScanner) fetch(ctx context.Context, url string) ([]byte, int, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	response, err := s.client.Do(request)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxExporterBodySize+1))
+	if err != nil {
+		return nil, response.StatusCode, err
+	}
+	if len(body) > maxExporterBodySize {
+		return nil, response.StatusCode, fmt.Errorf("response exceeds %d bytes", maxExporterBodySize)
+	}
+	return body, response.StatusCode, nil
+}
+
+func (s *exporterScanner) checkPort(ctx context.Context, baseURL string) {
+	body, status, err := s.fetch(ctx, baseURL)
+	if err != nil || status != http.StatusOK {
+		return
+	}
+	exporterType, err := utils.ParseExportersType(bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	s.report(utils.ColorBlue, fmt.Sprintf("[*] %s - detected %s", baseURL, exporterType))
+
+	for _, endpoint := range DebugEndpoints {
+		url := baseURL + endpoint
+		body, status, err := s.fetch(ctx, url)
+		if err != nil {
+			if ctx.Err() == nil {
+				s.report(utils.ColorYellow, fmt.Sprintf("[*] %s - request failed: %v", url, err))
+			}
+			continue
+		}
+		if status != http.StatusOK || len(bytes.TrimSpace(body)) == 0 {
+			continue
+		}
+		text := strings.ReplaceAll(string(body), "\x00", " ")
+		if endpoint == "/debug/vars" {
+			data, err := utils.UnmarshallJsonString(text)
 			if err != nil {
 				continue
 			}
-
-			defer response.Body.Close()
-
-			if response.StatusCode != http.StatusOK {
-				utils.Colorize(utils.ColorYellow, fmt.Sprintf("[-] %s - endpoint %s not accesible", target, endpoint))
-			}
-
-			respBody, err := io.ReadAll(response.Body)
-
-			if strings.Contains(string(respBody), "cmdline") {
-				var data map[string]interface{}
-				if err := json.Unmarshal(respBody, &data); err != nil {
-					continue
-				}
-
-				if cmdline, ok := data["cmdline"]; ok && cmdline != nil {
-					cmdlineData := fmt.Sprintf("%v", cmdline)
-					utils.Colorize(utils.ColorGreen, fmt.Sprintf("[+] %s - cmdline found\n %s \n", target, cmdlineData))
-				}
-			} else {
-				utils.Colorize(utils.ColorRed, fmt.Sprintf("[-] %s - cmdline not found", endpoint))
+			// Decode JSON escaping and join argv for rules spanning arguments.
+			// Also scan the whole document: expvars can expose other secrets.
+			if cmdline, ok := utils.ExportersExtractCmdline(data); ok {
+				text = cmdline + "\n" + text
 			}
 		}
+		s.report(utils.ColorGreen, fmt.Sprintf("[*] %s - found", url))
+		if secret := secretsengine.FindSecrets(text); secret != "" {
+			s.report(utils.ColorRed, fmt.Sprintf("[*] %s - secret: %s", url, secret))
+		}
 	}
+	if s.relay && ctx.Err() == nil {
+		s.checkRelay(ctx, baseURL, exporterType)
+	}
+}
 
+func (s *exporterScanner) checkRelay(ctx context.Context, baseURL, exporterType string) {
+	name := strings.ToLower(exporterType)
+	name = strings.NewReplacer("_", " ", "-", " ").Replace(name)
+	name = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(name, "prometheus "), "exporter"))
+	if name == "postgresql" {
+		name = "postgres"
+	}
+	endpoint, ok := RelayEndpoints[name]
+	if !ok {
+		return
+	}
+	body, _, err := s.fetch(ctx, baseURL+endpoint)
+	if err == nil && len(body) > 0 {
+		s.report(utils.ColorYellow, fmt.Sprintf("[*] %s%s - potential relay", baseURL, endpoint))
+	}
 }
